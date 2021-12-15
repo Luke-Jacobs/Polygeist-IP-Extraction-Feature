@@ -47,6 +47,9 @@
 #include "llvm/Support/Program.h"
 #include <fstream>
 
+#include <iostream>
+#include "Lib/pragmaHandler.h"
+
 #include "polygeist/Dialect.h"
 #include "polygeist/Passes/Passes.h"
 
@@ -297,6 +300,76 @@ int emitBinary(char *Argv0, const char *filename,
   return Res;
 }
 
+/* 
+ * Helper function to find line number associated with Operation
+ */
+long getLineNumberOfOp(mlir::Operation &op) {
+  using namespace mlir;
+
+  FileLineColLoc lineData = op.getLoc().dyn_cast<FileLineColLoc>();
+  if (lineData != NULL) {
+    return lineData.getLine();
+  } else {
+    return -1;
+  }
+}
+
+/* 
+ * Recurse through operation tree, printing each operation in pre-order.
+ */
+void printLineNumbers(mlir::Operation &op) {
+  // Block &bodyBlk = module->getRegion().getBlocks().front().front().getRegion(0).getBlocks().front();
+  // Block &funcBodyBlk = bodyBlk.front().getRegion(0).getBlocks().front();
+  // auto funcBlk = bodyBlk.front().getRegion(0).getBlocks().front();
+  using namespace mlir;
+
+  std::cout << "===== OPERATION =====\n";
+  op.dump();
+
+  /* If operation is in line range of IP, mark it as "inIP" */
+
+  for (Region &regionOp : op.getRegions()) {
+    for (Block &blk : regionOp.getBlocks()) {
+      for (Operation &op : blk.getOperations()) {
+        printLineNumbers(op);
+      }
+    }
+  }
+}
+
+/* 
+ * A recursive helper function may or may not be necessary to traverse the MLIR operation tree like we hope
+ */
+void addIPRegion_helper() {
+
+}
+
+/* Retrieves any operations in the regions contained by an Operation */
+
+/* 
+ * Add every MLIR operation between startLine and endLine to the new ipregion MLIR operation
+ */
+void addIPRegion(mlir::Operation &op, mlir::OpBuilder &builder, const struct IPLocList &ipLocList) {
+  long opLineNumber = getLineNumberOfOp(op);
+  if (opLineNumber > 0) {
+    if (ipLocList.isInIP((unsigned)opLineNumber)) {
+      op.setAttr("inIP", builder.getBoolAttr(true));
+    }
+  }
+
+  std::cout << "===== OPERATION =====\n";
+  op.dump();
+  std::cout << "\n";
+  
+  for (mlir::Region &regionOp : op.getRegions()) {
+    for (mlir::Block &blk : regionOp.getBlocks()) {
+      for (mlir::Operation &op : blk.getOperations()) {
+        addIPRegion(op, builder, ipLocList);
+      }
+    }
+  }
+}
+
 #include "Lib/clang-mlir.cc"
 int main(int argc, char **argv) {
 
@@ -379,7 +452,7 @@ int main(int argc, char **argv) {
   context.getOrLoadDialect<mlir::math::MathDialect>();
   context.getOrLoadDialect<mlir::memref::MemRefDialect>();
   context.getOrLoadDialect<mlir::linalg::LinalgDialect>();
-  context.getOrLoadDialect<mlir::polygeist::PolygeistDialect>();
+  context.getOrLoadDialect<mlir::polygeist::PolygeistDialect>();  /* TODO: Add operation to polygeist */
   // MLIRContext context;
 
   LLVM::LLVMPointerType::attachInterface<MemRefInsider>(context);
@@ -393,13 +466,16 @@ int main(int argc, char **argv) {
     }
     return 0;
   }
+
   mlir::OwningOpRef<mlir::ModuleOp> module(
-      mlir::ModuleOp::create(mlir::OpBuilder(&context).getUnknownLoc()));
+      mlir::ModuleOp::create(mlir::OpBuilder(&context).getUnknownLoc()));  // Take note of this usage of OpBuilder from context
 
   llvm::Triple triple;
   llvm::DataLayout DL("");
+  struct IPLocList ipRangeMetadata;  // Will store the IP start and end line numbers
   parseMLIR(argv[0], inputFileName, cfunction, includeDirs, defines, module,
-            triple, DL);
+            triple, DL, &ipRangeMetadata);  /* After we have parsed MLIR, apply the following passes... */
+  
   mlir::PassManager pm(&context);
 
   if (ImmediateMLIR) {
@@ -410,6 +486,11 @@ int main(int argc, char **argv) {
 
   bool LinkOMP = false;
   pm.enableVerifier(EarlyVerifier);
+
+  /* optPM is the pass manager that receives the registration of the
+     canonicalizer, a filter that removes unnecessary MLIR operations.
+     I will want to traverse the generated MLIR tree after these passes
+     happen. */
   mlir::OpPassManager &optPM = pm.nest<mlir::FuncOp>();
   if (true) {
     optPM.addPass(mlir::createCSEPass());
@@ -520,6 +601,7 @@ int main(int argc, char **argv) {
     if (EmitLLVM || !EmitAssembly) {
       pm.addPass(mlir::createLowerAffinePass());
       pm.nest<mlir::FuncOp>().addPass(mlir::createConvertMathToLLVMPass());
+      /* This appears to be where the PassManager applies its pass transformations to the MLIR module */
       if (mlir::failed(pm.run(module.get()))) {
         module->dump();
         return 4;
@@ -557,6 +639,35 @@ int main(int argc, char **argv) {
       return 5;
     }
   }
+
+  /* IPREGION FEATURE */
+  // std::cout << "This is the MLIR module as it is in main:567\n";
+
+  /* DEBUG test to see if we have ipRangeMetadata data */
+  // std::cout << "IP Def start: " << ipRangeMetadata.list.front().startLine << "\n";
+  // std::cout << "IP Def end: " << ipRangeMetadata.list.front().endLine << "\n";
+  mlir::OpBuilder opBuilder(&context);
+  addIPRegion(*module.get(), opBuilder, ipRangeMetadata);
+
+  // module->dump();
+  // Block &bodyBlk = module->getRegion().getBlocks().front();
+  // Block &funcBodyBlk = bodyBlk.front().getRegion(0).getBlocks().front();
+  // // auto funcBlk = bodyBlk.front().getRegion(0).getBlocks().front();
+  // for (Operation &bodyOp : funcBodyBlk) {
+  //   FileLineColLoc lineData = bodyOp.getLoc().dyn_cast<FileLineColLoc>();
+  //   std::cout << "\n===== OPERATION =====\n";
+  //   bodyOp.dump();
+  //   if (lineData != NULL) {
+  //     std::cout << "\nThis operation corresponds with C line number: " << lineData.getLine() << "\n";
+  //   } else {
+  //     std::cout << "\nCould not dynamic cast this location\n";
+  //   }
+  //   std::cout << "\n";
+  // }
+
+  // for (Operation &bodyOp : funcBodyBlk) {
+  //   printLineNumbers(bodyOp);
+  // }
 
   if (EmitLLVM || !EmitAssembly) {
     llvm::LLVMContext llvmContext;

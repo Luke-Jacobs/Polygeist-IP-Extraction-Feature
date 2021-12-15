@@ -90,7 +90,82 @@ struct ScopLocList {
 
 void addPragmaLowerToHandlers(clang::Preprocessor &PP, LowerToInfo &LTInfo);
 void addPragmaScopHandlers(clang::Preprocessor &PP, ScopLocList &scopLocList);
-void addPragmaEndScopHandlers(clang::Preprocessor &PP,
-                              ScopLocList &scopLocList);
+void addPragmaEndScopHandlers(clang::Preprocessor &PP, ScopLocList &scopLocList);
+
+/* EMIT IP REGION FEATURE */
+struct IPLocList;
+void addPragmaIPDefHandlers(clang::Preprocessor &PP, IPLocList &ipLocList);
+void addPragmaIPEndHandlers(clang::Preprocessor &PP, IPLocList &ipLocList);
+
+struct IPLoc {
+  IPLoc() : end(0) {}
+
+  clang::SourceLocation ipdef;
+  clang::SourceLocation ipend;
+  unsigned startLine;
+  unsigned endLine;
+  unsigned start;
+  unsigned end;
+};
+
+/* IPREGION COMPLETE */
+struct IPLocList {
+  std::vector<IPLoc> list;
+
+  // Add a new start (#pragma ipdef) location to the list.
+  // If the last #pragma ipdef did not have a matching
+  // #pragma ipend then overwrite it.
+  // "start" points to the location of the ipdef pragma.
+
+  void addStart(clang::SourceManager &SM, clang::SourceLocation start) {
+    IPLoc loc;
+
+    loc.ipdef = start;
+    int line = SM.getExpansionLineNumber(start);
+    start = SM.translateLineCol(SM.getFileID(start), line, 1);
+    loc.startLine = line;
+    loc.start = SM.getFileOffset(start);
+    if (list.size() == 0 || list[list.size() - 1].end != 0)
+      list.push_back(loc);
+    else
+      list[list.size() - 1] = loc;
+  }
+
+  // Set the end location (#pragma ipend) of the last pair
+  // in the list.
+  // If there is no such pair of if the end of that pair
+  // is already set, then ignore the spurious #pragma ipend.
+  // "end" points to the location of the ipend pragma.
+
+  void addEnd(clang::SourceManager &SM, clang::SourceLocation end) {
+    if (list.size() == 0 || list[list.size() - 1].end != 0)
+      return;
+    list[list.size() - 1].ipend = end;
+    int line = SM.getExpansionLineNumber(end);
+    end = SM.translateLineCol(SM.getFileID(end), line + 1, 1);
+    list[list.size() - 1].end = SM.getFileOffset(end);
+    list[list.size() - 1].endLine = line;
+  }
+
+  // Check if the current location is in the scop.
+  bool isInIP(clang::SourceLocation target) const {
+    if (!list.size())
+      return false;
+    for (auto &IPLoc : list)
+      if ((target >= IPLoc.ipdef) && (target <= IPLoc.ipend))
+        return true;
+    return false;
+  }
+
+  bool isInIP(unsigned line) const {
+    /* This function currently returns true if the line is in AT LEAST ONE OF multiple IP line ranges */
+    for (const IPLoc &ipRegion : list) {
+      if (line > ipRegion.startLine && line < ipRegion.endLine) {
+        return true;
+      }
+    }
+    return false;
+  }
+};
 
 #endif

@@ -47,6 +47,7 @@ struct LoopContext {
   mlir::Value noBreak;
 };
 
+/* %%%%% NOTE:RELEVANT %%%%% */
 struct MLIRASTConsumer : public ASTConsumer {
   std::set<std::string> &emitIfFound;
   std::set<std::string> &done;
@@ -65,6 +66,8 @@ struct MLIRASTConsumer : public ASTConsumer {
   CodeGen::CodeGenModule CGM;
   bool error;
   ScopLocList scopLocList;
+  struct IPLocList *IPLocList;  /* NEW IP LIBRARY ADDITION */
+  /* TODO: Add some global flag that can be referenced by each Visitor method. (VisitCompound?) */
   LowerToInfo LTInfo;
 
   /// The stateful type translator (contains named structs).
@@ -79,7 +82,8 @@ struct MLIRASTConsumer : public ASTConsumer {
       std::map<std::string, mlir::LLVM::GlobalOp> &llvmGlobals,
       std::map<std::string, mlir::LLVM::LLVMFuncOp> &llvmFunctions,
       Preprocessor &PP, ASTContext &astContext,
-      mlir::OwningOpRef<mlir::ModuleOp> &module, clang::SourceManager &SM)
+      mlir::OwningOpRef<mlir::ModuleOp> &module, clang::SourceManager &SM,
+      struct IPLocList *IPLocList = NULL)
       : emitIfFound(emitIfFound), done(done),
         llvmStringGlobals(llvmStringGlobals), globals(globals),
         functions(functions), llvmGlobals(llvmGlobals),
@@ -88,11 +92,15 @@ struct MLIRASTConsumer : public ASTConsumer {
         codegenops(),
         CGM(astContext, PP.getHeaderSearchInfo().getHeaderSearchOpts(),
             PP.getPreprocessorOpts(), codegenops, llvmMod, PP.getDiagnostics()),
-        error(false), typeTranslator(*module->getContext()),
+        error(false), IPLocList(IPLocList), typeTranslator(*module->getContext()),
         reverseTypeTranslator(lcontext) {
+    /* %%%%% NOTE:RELEVANT %%%%% */
     addPragmaScopHandlers(PP, scopLocList);
     addPragmaEndScopHandlers(PP, scopLocList);
     addPragmaLowerToHandlers(PP, LTInfo);
+    /* IPREGION FEATURE */
+    addPragmaIPDefHandlers(PP, *IPLocList);
+    addPragmaIPEndHandlers(PP, *IPLocList);
   }
 
   ~MLIRASTConsumer() {}

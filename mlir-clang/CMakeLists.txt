@@ -16,6 +16,8 @@ set( LLVM_LINK_COMPONENTS
   Vectorize
 )
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
+
 add_clang_tool(mlir-clang
   "${LLVM_SOURCE_DIR}/../clang/tools/driver/cc1_main.cpp"
   "${LLVM_SOURCE_DIR}/../clang/tools/driver/cc1as_main.cpp"

@@ -206,6 +206,7 @@ public:
 private:
 };
 
+/* %%%%% NOTE:RELEVANT %%%%% */
 struct PragmaScopHandler : public PragmaHandler {
   ScopLocList &scops;
 
@@ -233,11 +234,41 @@ struct PragmaEndScopHandler : public PragmaHandler {
   }
 };
 
+/* IPREGION FEATURE */
+
+struct PragmaIPDefHandler : public PragmaHandler {
+  IPLocList &ips;
+
+  PragmaIPDefHandler(IPLocList &ips) : PragmaHandler("ipdef"), ips(ips) {}
+
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &ipDefTok) override {
+    auto &SM = PP.getSourceManager();
+    auto loc = ipDefTok.getLocation();
+    ips.addStart(SM, loc);
+  }
+};
+
+struct PragmaIPEndHandler : public PragmaHandler {
+  IPLocList &ips;
+
+  PragmaIPEndHandler(IPLocList &ips) : PragmaHandler("ipend"), ips(ips) {}
+
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer introducer,
+                    Token &endIPTok) override {
+    auto &SM = PP.getSourceManager();
+    auto loc = endIPTok.getLocation();
+    ips.addEnd(SM, loc);
+  }
+};
+
 } // namespace
 
 void addPragmaLowerToHandlers(Preprocessor &PP, LowerToInfo &LTInfo) {
   PP.AddPragmaHandler(new PragmaLowerToHandler(LTInfo));
 }
+
+/* %%%%% NOTE:RELEVANT %%%%% */
 
 void addPragmaScopHandlers(Preprocessor &PP, ScopLocList &scopLocList) {
   PP.AddPragmaHandler(new PragmaScopHandler(scopLocList));
@@ -245,4 +276,13 @@ void addPragmaScopHandlers(Preprocessor &PP, ScopLocList &scopLocList) {
 
 void addPragmaEndScopHandlers(Preprocessor &PP, ScopLocList &scopLocList) {
   PP.AddPragmaHandler(new PragmaEndScopHandler(scopLocList));
+}
+
+/* IPREGION FEATURE */
+void addPragmaIPDefHandlers(Preprocessor &PP, IPLocList &ipLocList) {
+  PP.AddPragmaHandler(new PragmaIPDefHandler(ipLocList));
+}
+
+void addPragmaIPEndHandlers(Preprocessor &PP, IPLocList &ipLocList) {
+  PP.AddPragmaHandler(new PragmaIPEndHandler(ipLocList));
 }

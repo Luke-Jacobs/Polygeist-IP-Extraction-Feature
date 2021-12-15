@@ -34,6 +34,9 @@
 #include <mlir/Dialect/Arithmetic/IR/Arithmetic.h>
 #include <mlir/Dialect/SCF/SCF.h>
 
+/* IPREGION FEATURE */
+#include <iostream>
+
 using namespace std;
 using namespace clang;
 using namespace llvm;
@@ -288,6 +291,10 @@ MLIRScanner::MLIRScanner(MLIRASTConsumer &Glob, mlir::FuncOp function,
           returnVal, std::vector<mlir::Value>({}));
     }
   }
+  
+  /* IPREGION FEATURE */
+  /* This is only executed once on the body of the given function */
+  std::cout << "Visited statement name: " << stmt->getStmtClassName() << "\n";
   Visit(stmt);
 
   if (function.getType().getResults().size()) {
@@ -296,6 +303,31 @@ MLIRScanner::MLIRScanner(MLIRASTConsumer &Glob, mlir::FuncOp function,
     builder.create<mlir::ReturnOp>(loc, vals);
   } else
     builder.create<mlir::ReturnOp>(loc);
+
+  /* TODO IPREGION FEATURE */
+  /* At this point in the code, we should have the mlir::FuncOp function populated with MLIR operations.
+     Now, we need to perform an ipregion insertion pass to add IP definition metadata to the MLIR tree. */
+  // Block &funcBody = function.body().front();
+  
+  // for (Operation &operation : funcBody) {
+  //   std::cout << "New operation (";
+
+  //   std::string opName;
+  //   llvm::raw_string_ostream strStream(opName);
+  //   strStream << operation;
+  //   std::cout << opName << ")\n";
+
+  //   FileLineColLoc lineData = operation.getLoc().dyn_cast<FileLineColLoc>();
+  //   if (lineData != NULL) {
+  //     std::cout << "\tThis operation corresponds with C line number: " << lineData.getLine() << "\n";
+  //   } else {
+  //     std::cout << "\tCould not dynamic cast this location\n";
+  //   }
+  //   auto regions = operation.getRegions();
+  //   std::cout << "\tThis operation has " << regions.size() << " regions\n";
+  // }
+  // std::cout << "Dumping function body\n\n";
+  // function.dump();
 
   assert(function->getParentOp() == Glob.module.get() &&
          "New function must be inserted into global module");
@@ -1030,8 +1062,7 @@ bool MLIRScanner::getUpperBound(clang::ForStmt *fors,
 
       auto rhs = binaryOp->getRHS();
       mlir::Value val = Visit(rhs).getValue(builder);
-      val = builder.create<IndexCastOp>(loc, val,
-                                        mlir::IndexType::get(val.getContext()));
+      val = builder.create<IndexCastOp>(loc, val, mlir::IndexType::get(val.getContext()));
       if (binaryOp->getOpcode() == clang::BinaryOperator::Opcode::BO_LE)
         val = builder.create<AddIOp>(loc, val, getConstantIndex(1));
       descr.setUpperBound(val);
@@ -1095,7 +1126,7 @@ void MLIRScanner::buildAffineLoopImpl(
       builder.getSymbolIdentityMap(), descr.getStep(),
       /*iterArgs=*/llvm::None);
 
-  auto &reg = affineOp.getLoopBody();
+  auto &reg = affineOp.getLoopBody();  /* Gets mlir::Region& that is the blank loop region */
 
   auto val = (mlir::Value)affineOp.getInductionVar();
 
@@ -1120,6 +1151,19 @@ void MLIRScanner::buildAffineLoopImpl(
   auto idx = builder.create<IndexCastOp>(loc, val, descr.getType());
   assert(params.find(descr.getName()) != params.end());
   params[descr.getName()].store(builder, idx);
+
+  /* Add a floating point add operation for testing */
+  /* The key is to create a local APFloat that wraps the double */
+  // std::cout << "Adding FOp to for loop\n";
+  // if (Glob.IPLocList.isInIP(fors->getForLoc())) {
+  //   std::cout << "THIS FOR LOOP IS IN THE IP\n";
+  // }
+  // builder.setInsertionPointToStart(&reg.front());
+  // mlir::arith::ConstantFloatOp arg1 = builder.create<mlir::arith::ConstantFloatOp>(loc, llvm::APFloat(5.0), builder.getF64Type());
+  // mlir::arith::ConstantFloatOp arg2 = builder.create<mlir::arith::ConstantFloatOp>(loc, llvm::APFloat(7.0), builder.getF64Type());
+  // builder.create<mlir::arith::AddFOp>(loc, arg1, arg2);
+
+  // affineOp->setAttr("test", builder.getI64IntegerAttr(5));
 
   // TODO: set loop context.
   Visit(fors->getBody());
@@ -4911,6 +4955,7 @@ MLIRScanner::VisitConditionalOperator(clang::ConditionalOperator *E) {
   // return ifOp;
 }
 
+/* This is always an rvalue */
 ValueCategory MLIRScanner::VisitStmtExpr(clang::StmtExpr *stmt) {
   ValueCategory off = nullptr;
   for (auto a : stmt->getSubStmt()->children()) {
@@ -5379,6 +5424,7 @@ mlir::FuncOp MLIRASTConsumer::GetOrCreateMLIRFunction(const FunctionDecl *FD) {
 }
 
 void MLIRASTConsumer::run() {
+  /* NOTE: Runs through the functions stored in the class */
   while (functionsToEmit.size()) {
     const FunctionDecl *FD = functionsToEmit.front();
     assert(FD->getBody());
@@ -5400,6 +5446,8 @@ void MLIRASTConsumer::run() {
     if (done.count(name))
       continue;
     done.insert(name);
+    /* NOTE: Consumer gives a reference to itself to the scanner and a function reference to 
+             GetOrCreateMLIRFunction that enables the scanner to emit MLIR. */
     MLIRScanner ms(*this, GetOrCreateMLIRFunction(FD), FD, module, LTInfo);
   }
 }
@@ -5546,7 +5594,7 @@ bool MLIRASTConsumer::HandleTopLevelDecl(DeclGroupRef dg) {
     }
   }
 
-  run();
+  run();  /* Processes the functions in functionsToEmit that were added in this overrided function */
 
   return true;
 }
@@ -6016,6 +6064,8 @@ public:
   std::map<std::string, mlir::FuncOp> functions;
   std::map<std::string, mlir::LLVM::GlobalOp> llvmGlobals;
   std::map<std::string, mlir::LLVM::LLVMFuncOp> llvmFunctions;
+  struct IPLocList ipRegionData;  // Receives the IP location data from ASTConsumer
+
   MLIRAction(std::string fn, mlir::OwningOpRef<mlir::ModuleOp> &module)
       : module(module) {
     emitIfFound.insert(fn);
@@ -6025,7 +6075,7 @@ public:
     return std::unique_ptr<clang::ASTConsumer>(new MLIRASTConsumer(
         emitIfFound, done, llvmStringGlobals, globals, functions, llvmGlobals,
         llvmFunctions, CI.getPreprocessor(), CI.getASTContext(), module,
-        CI.getSourceManager()));
+        CI.getSourceManager(), &ipRegionData));
   }
 };
 
@@ -6056,7 +6106,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
                       std::string fn, std::vector<std::string> includeDirs,
                       std::vector<std::string> defines,
                       mlir::OwningOpRef<mlir::ModuleOp> &module,
-                      llvm::Triple &triple, llvm::DataLayout &DL) {
+                      llvm::Triple &triple, llvm::DataLayout &DL, IPLocList *outputIPLocList = NULL) {
 
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
   // Buffer diagnostics from argument parsing so that we can output them using a
@@ -6233,5 +6283,11 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
     DL = llvm::DataLayout(Clang->getTarget().getDataLayoutString());
     triple = Clang->getTarget().getTriple();
   }
+  
+  if (outputIPLocList != NULL) {
+    std::cout << "Writing IP loc list to output ptr after completing MLIR action\n";
+    *outputIPLocList = Act.ipRegionData;
+  }
+  
   return true;
 }

@@ -11,6 +11,8 @@
 #include <mlir/Dialect/Arithmetic/IR/Arithmetic.h>
 #include <mlir/Dialect/SCF/SCF.h>
 
+#include <iostream>
+
 using namespace mlir;
 using namespace mlir::arith;
 
@@ -21,6 +23,8 @@ static bool isTerminator(Operation *op) {
 ValueCategory MLIRScanner::VisitForStmt(clang::ForStmt *fors) {
   IfScope scope(*this);
 
+  // std::cout << "Visiting For loop on line: " << fors->getForLoc().printToString(Glob.SM) << "\n";
+
   auto loc = getMLIRLocation(fors->getForLoc());
 
   mlirclang::AffineLoopDescriptor affineLoopDescr;
@@ -30,7 +34,7 @@ ValueCategory MLIRScanner::VisitForStmt(clang::ForStmt *fors) {
   } else {
 
     if (auto s = fors->getInit()) {
-      Visit(s);
+      Visit(s);  /* Dispatch execution to another visitor handler */
     }
 
     auto i1Ty = builder.getIntegerType(1);
@@ -73,6 +77,15 @@ ValueCategory MLIRScanner::VisitForStmt(clang::ForStmt *fors) {
     }
 
     builder.setInsertionPointToStart(&bodyB);
+
+    /* Add a floating point add operation for testing */
+    /* The key is to create a new Attribute which holds the value of the constant */
+    // mlir::FloatAttr fl_attr1 = builder.getFloatAttr(builder.getF64Type(), 5.0);
+    // mlir::FloatAttr fl_attr2 = builder.getFloatAttr(builder.getF64Type(), 7.0);
+    // mlir::arith::ConstantFloatOp arg1 = builder.create<mlir::arith::ConstantFloatOp>(loc, llvm::APFloat(5.0), builder.getF64Type());
+    // mlir::arith::ConstantFloatOp arg2 = builder.create<mlir::arith::ConstantFloatOp>(loc, llvm::APFloat(7.0), builder.getF64Type());
+    // builder.create<mlir::arith::AddFOp>(loc, arg1, arg2);
+    
     builder.create<mlir::memref::StoreOp>(
         loc,
         builder.create<mlir::memref::LoadOp>(loc, lctx.noBreak,
@@ -81,6 +94,7 @@ ValueCategory MLIRScanner::VisitForStmt(clang::ForStmt *fors) {
 
     loops.push_back(lctx);
     Visit(fors->getBody());
+    /* Visit the increment part of the loop if it exists */
     if (auto s = fors->getInc()) {
       Visit(s);
     }

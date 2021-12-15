@@ -3,6 +3,11 @@
 
 include "mlir/Pass/PassBase.td"
 
+// #### IP REGION FEATURE ####
+// #### I will need to add a pass here that will take IPRegion and make a new function from its contents.
+// #### Somewhere in the process I need to use Liveness testing to extract the input and outputs from the MLIR.
+// #### The module needs to be for ModuleOp because it needs to create a function
+
 def AffineCFG : FunctionPass<"affine-cfg"> {
   let summary = "Replace scf.if and similar with affine.if";
   let constructor = "mlir::replaceAffineCFGPass()";

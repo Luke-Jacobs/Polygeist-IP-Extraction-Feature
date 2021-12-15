@@ -16,6 +16,29 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"
 include "mlir/Dialect/LLVMIR/LLVMOpsInterfaces.td"
 
+
+//===----------------------------------------------------------------------===//
+// IpRegionOp
+//===----------------------------------------------------------------------===//
+
+def IpRegionOp : Polygeist_Op<"ipregion", []> {
+  let summary = "region of MLIR that will be exported into an IP";
+  let description = [{}];
+
+  let hasCanonicalizer = 0;  // I do not believe I want to use the canonicalizer on this because it might remove things?
+
+  /* The arguments and results will be determined by the liveness process */
+  let arguments = (ins Variadic<AnyType>);
+  let results = (outs Variadic<AnyType>:$results);
+
+  /* Contains just one region */
+  let regions = (region SizedRegion<1>:$ipCode);
+}
+
+//===----------------------------------------------------------------------===//
+// BarrierOp
+//===----------------------------------------------------------------------===//
+
 // HasParent<"ParallelOp">,
 def BarrierOp
     : Polygeist_Op<"barrier",

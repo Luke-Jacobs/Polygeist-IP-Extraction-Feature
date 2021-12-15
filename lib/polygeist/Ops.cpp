@@ -27,6 +27,8 @@ using namespace mlir;
 using namespace mlir::polygeist;
 using namespace mlir::arith;
 
+/* IPREGION: It looks like operation methods are specified here */
+
 //===----------------------------------------------------------------------===//
 // BarrierOp
 //===----------------------------------------------------------------------===//
