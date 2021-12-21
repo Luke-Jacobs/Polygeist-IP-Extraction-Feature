@@ -234,6 +234,12 @@ ValueCategory MLIRScanner::VisitWhileStmt(clang::WhileStmt *fors) {
 ValueCategory MLIRScanner::VisitIfStmt(clang::IfStmt *stmt) {
   IfScope scope(*this);
   auto loc = getMLIRLocation(stmt->getIfLoc());
+
+  /* Print the line number of this If statement from the line */
+  // clang::SourceLocation clang_loc = stmt->getIfLoc();
+  // unsigned int ifStmtLine = Glob.SM.getExpansionLineNumber(clang_loc);
+  // std::cout << "Clang If line number:" << ifStmtLine << "\n";
+
   auto cond = Visit(stmt->getCond()).getValue(builder);
   assert(cond != nullptr && "must be a non-null");
 

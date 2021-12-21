@@ -8,6 +8,17 @@ include "mlir/Pass/PassBase.td"
 // #### Somewhere in the process I need to use Liveness testing to extract the input and outputs from the MLIR.
 // #### The module needs to be for ModuleOp because it needs to create a function
 
+// IP REGION FEATURE
+def ExtractIPPass : Pass<"ip-region-pass", "ModuleOp"> {
+  let summary = "Extracts an IP defined with ipdef and ipend pragmas into a separate function.";
+
+  let description = [{}];
+
+  let constructor = "mlir::extractIPPass()";
+}
+
+// TODO Add another pass that takes the ipregion and make it into a separate function using liveness tools
+
 def AffineCFG : FunctionPass<"affine-cfg"> {
   let summary = "Replace scf.if and similar with affine.if";
   let constructor = "mlir::replaceAffineCFGPass()";

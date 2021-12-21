@@ -166,6 +166,10 @@ struct IPLocList {
     }
     return false;
   }
+
+  bool empty() const {
+    return list.empty();
+  }
 };
 
 #endif

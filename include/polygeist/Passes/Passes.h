@@ -3,6 +3,7 @@
 #include <memory>
 namespace mlir {
 namespace polygeist {
+/* Add constructor for IPregion pass here */
 std::unique_ptr<OperationPass<FuncOp>> createMem2RegPass();
 std::unique_ptr<OperationPass<FuncOp>> createLoopRestructurePass();
 std::unique_ptr<OperationPass<FuncOp>> replaceAffineCFGPass();
@@ -13,8 +14,8 @@ std::unique_ptr<Pass> createBarrierRemovalContinuation();
 std::unique_ptr<OperationPass<FuncOp>> detectReductionPass();
 std::unique_ptr<OperationPass<FuncOp>> createRemoveTrivialUsePass();
 std::unique_ptr<Pass> createParallelLowerPass();
-std::unique_ptr<Pass>
-createConvertPolygeistToLLVMPass(const LowerToLLVMOptions &options);
+std::unique_ptr<Pass> createConvertPolygeistToLLVMPass(const LowerToLLVMOptions &options);
+std::unique_ptr<Pass> createExtractIPPass(unsigned startLine, unsigned endLine);
 } // namespace polygeist
 } // namespace mlir
 

@@ -294,7 +294,7 @@ MLIRScanner::MLIRScanner(MLIRASTConsumer &Glob, mlir::FuncOp function,
   
   /* IPREGION FEATURE */
   /* This is only executed once on the body of the given function */
-  std::cout << "Visited statement name: " << stmt->getStmtClassName() << "\n";
+  // std::cout << "Visited statement name: " << stmt->getStmtClassName() << "\n";
   Visit(stmt);
 
   if (function.getType().getResults().size()) {
@@ -6285,7 +6285,7 @@ static bool parseMLIR(const char *Argv0, std::vector<std::string> filenames,
   }
   
   if (outputIPLocList != NULL) {
-    std::cout << "Writing IP loc list to output ptr after completing MLIR action\n";
+    // std::cout << "Writing IP loc list to output ptr after completing MLIR action\n";
     *outputIPLocList = Act.ipRegionData;
   }
   
