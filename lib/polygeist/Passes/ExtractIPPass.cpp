@@ -15,6 +15,8 @@
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Analysis/Liveness.h"
 #include <queue>
@@ -110,11 +112,6 @@ struct ExtractIPPass : public ExtractIPPassBase<ExtractIPPass> {
     std::queue<Block *> captureTargetQueue;
     captureTargetQueue.push(blk);
 
-    /* Skip IP functions, since they are already captured */
-    if (hostOp.getName() == "IP_func") {
-      return false;
-    }
-
     while (!captureTargetQueue.empty()) {
       // llvm::errs() << "----- TAKING A BLOCK FROM QUEUE -----\n";
 
@@ -130,31 +127,42 @@ struct ExtractIPPass : public ExtractIPPassBase<ExtractIPPass> {
         // to ignore starting the IP block with a constant.
         if (mlir::isa<arith::ConstantOp>(op))
           continue;  
+        if (mlir::isa<mlir::LLVM::UndefOp>(op))  // The undef operation is grouped with constants at the tops of functions <- TODO fix the constant-grouping problem
+          continue;
+        if (mlir::isa<mlir::memref::AllocaOp>(op))
+          continue;
 
         if ((attr = op.getAttr("inIP")) != NULL && attr == builder.getBoolAttr(true)) {
           /* Now that we have found the start of the IP, search for an {inIP = false} attribute or the end of the block */
 
           // Now the task is to find the end of the IP in the block
           mlir::Block::iterator startOfIP = blkOpIter;
-          mlir::Block::iterator startOfRemainder = blk->end();  // default to the ip taking the rest of the block
+          mlir::Block::iterator startOfRemainder = blk->end();  // this iterator location keeps track of the first operation of the remainder block
           Block *startOfIPBlk = blk->splitBlock(startOfIP);
 
           // Continue iterating: Add all operations below this that are in the same block that don't have {inIP = false} in them
           for (auto ipOpIter = startOfIPBlk->begin(); ipOpIter != startOfIPBlk->end(); ++ipOpIter) {
             mlir::Operation &opAfterIPStart = *ipOpIter;
             // llvm::errs() << "Looking at operation: " << opAfterIPStart << "\n";
-            bool isExcludedOpOrUnknownLine = (attr = opAfterIPStart.getAttr("inIP")) != NULL && attr == builder.getBoolAttr(false);
+            bool isAmbigousOp = (attr = opAfterIPStart.getAttr("inIP")) == NULL;
+            bool isExcludedOp = attr == builder.getBoolAttr(false);
             bool isRetOp = isa<ReturnOp>(opAfterIPStart);
-            if (isRetOp || isExcludedOpOrUnknownLine) {
-              // llvm::errs() << "Found first false operation: " << opAfterIPStart << "\n";
+            if (isAmbigousOp)
               startOfRemainder = ipOpIter;  // We have found the end of the IP (the iter to the first operation in this block that is not in the IP)
+            if (isExcludedOp || isRetOp) {  // Both excluded operations and the return operation triggers the end-of-IP logic
+              // If the startOfRemainder iterator location has not been updated by encountering an ambiguous operation, update it here at this excluded operation
+              if (startOfRemainder == blk->end())
+                startOfRemainder = ipOpIter;
               break;
+            }
+            // If we have encountered an operation that has been annotated explicitly as being in the IP
+            if (!isAmbigousOp && !isExcludedOp) {
+              startOfRemainder = blk->end();  // Reset the remainder block start because we have not yet found it
             }
           }
 
           /* Temporary fix for affine.yield errors: reverse the iterator if the last instruction in the IP is an affine.yield. This means
              the original function is left without a yield, which will cause invalid MLIR. */
-          // TODO
 
           Block *remainderBlk = NULL;
           if (startOfRemainder != blk->end()) { // If we have remaining operations, split the block at the start of those remaining operations
@@ -253,8 +261,8 @@ struct ExtractIPPass : public ExtractIPPassBase<ExtractIPPass> {
             remainderBlk->erase();
           }
 
-          // llvm::errs() << "COMPLETE MLIR OUTPUT AFTER IP FUNCTION EXTRACT PASS\n";
-          // module->dump();
+          llvm::errs() << "COMPLETE MLIR OUTPUT AFTER IP FUNCTION EXTRACT PASS\n";
+          module->dump();
 
           return true;
         }
@@ -295,12 +303,16 @@ void ExtractIPPass::runOnOperation() {
     if (funcOp == NULL)
       continue;
 
+    /* Skip IP functions, since they are already captured */
+    if (funcOp.getName() == "IP_func")
+      continue;
+
     for (Block &blk : funcOp.body()) {
       annotateBlkWithIPAttr(blk, builder);
     }
 
-    // llvm::errs() << "===== POST-ANNOTATION MLIR DUMP =====\n";
-    // funcOp->dump();
+    llvm::errs() << "===== POST-ANNOTATION MLIR DUMP =====\n";
+    funcOp->dump();
 
     /* Traverse into the MLIR and find the first instance of the {inIP = true} attribute. */
     mlir::IRRewriter rewriter(funcOp->getContext());
